@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="no">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="IMDb ønskeliste – legg til filmer og serier du vil se.">
+    <title>IMDb Ønskeliste</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" type="image/svg+xml" href="/img/favicon-imdb.svg">
+
+    <style>
+        .hidden {
+            display: none !important;
+        }
+
+        .source-code {
+            background-color: #facc15;
+            color: #111827;
+            position: fixed;
+            top: 5rem;
+            right: 1.2rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            z-index: 1000;
+            display: inline-block;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            text-decoration: none;
+            transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+        }
+
+        .source-code:active {
+            transform: translateY(0);
+        }
+
+        .submit-button {
+            background-color: #facc15;
+            color: #111827;
+            border: none;
+            border-radius: 0.25rem;
+            padding: 0.5rem 1.5rem;
+            font-weight: 700;
+            transition-duration: 200ms;
+            cursor: pointer;
+        }
+
+        .submit-button:hover {
+            background-color: #eab308;
+        }
+
+        h1 {
+
+            padding-top: 40px;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        .text-gray-300 {
+            text-align: center;
+        }
+
+        .comment-form-container {
+            margin-bottom: 1.5rem;
+        }
+
+        .comment-form-input {
+            width: 100%;
+            background-color: #374151;
+            color: #ffffff;
+            border-radius: 0.5rem;
+            border: 1px solid #4b5563;
+            outline: none;
+            transition: border-color 0.2s ease-in-out;
+        }
+
+        .comment-form-input:focus {
+            border-color: #facc15;
+        }
+
+        .comment-submit-wrapper {
+            display: flex;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans">
+
+
+    <div class="container mx-auto max-w-2xl px-4 py-10">
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-extrabold text-yellow-500">Film & Serie Ønskeliste</h1>
+            <p class="text-gray-400">Lim inn IMDb-lenker på det du vil se!</p>
+        </header>
+
+
+
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
+            <!-- Meldinger for suksess og feil -->
+            <div id="errorMessage"
+                class="hidden bg-red-900/50 border border-red-500/30 text-red-200 px-4 py-3 rounded mb-4 text-center text-sm font-semibold">
+            </div>
+            <div id="successMessage"
+                class="hidden bg-green-900/50 border border-green-500/30 text-green-200 px-4 py-3 rounded mb-4 text-center text-sm font-semibold">
+            </div>
+
+            <form id="wishForm" class="flex flex-col sm:flex-row gap-3">
+                <input type="url" id="imdbUrl" placeholder="https://www.imdb.com/title/tt11198330/?ref_=hm_epspo_ttl"
+                    required pattern="https?://(www\.)?imdb\.com/title/tt\d+.*"
+                    title="Skriv inn en IMDb-tittellink som starter med https://www.imdb.com/title/tt11198330/?ref_=hm_epspo_ttl"
+                    class="flex-1 bg-gray-700 border border-gray-600 rounded px-4 py-2 text-white focus:outline-none focus:border-yellow-500">
+                <button type="submit" class="submit-button">
+                    Legg til
+                </button>
+            </form>
+
+        </div>
+
+        <h2 class="text-2xl font-extrabold text-yellow-500 text-center mt-8 mb-4">Ønsker</h2>
+
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
+            <p id="emptyMessage" class="text-gray-500 py-4 text-center">Ønskelisten er tom. Legg til noe over!
+            </p>
+            <ul id="wishList" class="divide-y divide-gray-700"></ul>
+        </div>
+
+        <h2 class="text-2xl font-extrabold text-yellow-500 text-center mt-8 mb-4">Kommentarer</h2>
+
+
+        <form id="commentForm" class="comment-form-container">
+            <input type="text" id="commentName" placeholder="Ditt navn..." required class="comment-form-input p-2 mb-3">
+            <textarea id="commentInput" required class="comment-form-input p-3 mb-3" placeholder="Skriv en kommentar..."
+                rows="3"></textarea>
+            <div class="comment-submit-wrapper">
+                <button type="submit" class="submit-button">Send</button>
+            </div>
+        </form>
+
+        <div id="commentsContainer" class="space-y-4">
+
+        </div>
+    </div>
+
+    <script>
+        const RENDER_API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:3000'
+            : 'Render site here!';
+        const wishForm = document.getElementById('wishForm');
+        const imdbUrlInput = document.getElementById('imdbUrl');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        const emptyMessage = document.getElementById('emptyMessage');
+        const wishList = document.getElementById('wishList');
+        const submitButton = wishForm.querySelector('button[type="submit"]');
+        let successTimeoutId = null;
+        let errorTimeoutId = null;
+
+        // Kommentarer-elementer
+        const commentForm = document.getElementById('commentForm');
+        const commentInput = document.getElementById('commentInput');
+        const commentName = document.getElementById('commentName');
+        const commentsContainer = document.getElementById('commentsContainer');
+
+        function isValidImdbLink(value) {
+            if (!value) return false;
+            try {
+                const normalized = value.trim().startsWith('http://') || value.trim().startsWith('https://')
+                    ? value.trim()
+                    : `https://${value.trim()}`;
+                const parsed = new URL(normalized);
+                const hostname = parsed.hostname.toLowerCase();
+                if (hostname !== 'imdb.com' && !hostname.endsWith('.imdb.com')) {
+                    return false;
+                }
+                return /\/title\/tt\d+/i.test(parsed.pathname);
+            } catch {
+                return false;
+            }
+        }
+
+        function renderWishes(wishes) {
+            wishList.innerHTML = '';
+            if (!wishes || wishes.length === 0) {
+                emptyMessage.style.display = 'block';
+                return;
+            }
+            emptyMessage.style.display = 'none';
+
+            wishes.forEach(wish => {
+                const li = document.createElement('li');
+                li.className = 'py-3 flex items-center justify-between gap-3';
+                const url = wish.imdb_url || wish.url || '';
+                const title = wish.title || url;
+
+                const titleContainer = document.createElement('div');
+                titleContainer.className = 'flex items-center gap-2 truncate flex-1 min-w-0';
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.className = 'text-yellow-400 hover:text-yellow-300 underline truncate';
+                link.textContent = title;
+                titleContainer.appendChild(link);
+
+                if (wish.imdb_rating && wish.imdb_rating !== 'N/A') {
+                    const ratingBadge = document.createElement('span');
+                    ratingBadge.className = 'text-xs text-yellow-500 font-semibold bg-gray-900/60 px-1.5 py-0.5 rounded border border-yellow-500/20 shrink-0';
+                    ratingBadge.textContent = '★ ' + wish.imdb_rating;
+                    titleContainer.appendChild(ratingBadge);
+                }
+
+                li.appendChild(titleContainer);
+
+                if (wish.type) {
+                    const typeBadge = document.createElement('span');
+                    typeBadge.className = 'text-base text-gray-300 font-medium mr-6 shrink-0';
+                    typeBadge.textContent = wish.type;
+                    li.appendChild(typeBadge);
+                }
+
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.className = 'bg-red-600 hover:bg-red-500 text-white text-sm px-3 py-1 rounded transition-colors shrink-0 font-semibold';
+                deleteButton.textContent = 'Slett';
+                deleteButton.addEventListener('click', () => deleteWish(wish.id || '', deleteButton));
+
+                li.appendChild(deleteButton);
+                wishList.appendChild(li);
+            });
+        }
+
+        async function deleteWish(id, btn) {
+            if (!id) return;
+            try {
+                const url = new URL(`/wishes/${id}`, RENDER_API_URL).href;
+                const res = await fetch(url, { method: 'DELETE' });
+                if (res.ok) {
+                    btn.closest('li').remove();
+                    if (wishList.children.length === 0) {
+                        emptyMessage.style.display = 'block';
+                    }
+                }
+            } catch (err) {
+                console.error('Kunne ikke slette ønske:', err);
+            }
+        }
+
+        async function deleteComment(id, btn) {
+            if (!id) return;
+            try {
+                const url = new URL(`/comments/${id}`, RENDER_API_URL).href;
+                const res = await fetch(url, { method: 'DELETE' });
+                if (res.ok) {
+                    btn.closest('.comment-card').remove();
+                    if (commentsContainer.children.length === 0) {
+                        commentsContainer.innerHTML = '<p class="text-gray-500 text-center py-4">Ingen kommentarer ennå. Bli den første!</p>';
+                    }
+                }
+            } catch (err) {
+                console.error('Kunne ikke slette kommentar:', err);
+            }
+        }
+
+        async function fetchWishes() {
+            try {
+                const url = new URL('/wishes', RENDER_API_URL).href;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Kunne ikke hente ønskelisten.');
+                const wishes = await res.json();
+                renderWishes(wishes);
+            } catch (err) {
+                showError('Feil ved tilkobling til serveren.');
+            }
+        }
+
+        wishForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorMessage.classList.add('hidden');
+
+            const urlValue = imdbUrlInput.value.trim();
+            if (!isValidImdbLink(urlValue)) {
+                showError('Skriv inn en gyldig IMDb-tittellink (f.eks. https://www.imdb.com/title/tt1234567).');
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+            try {
+                const url = new URL('/wishes', RENDER_API_URL).href;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: urlValue })
+                });
+
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({ error: `Serverfeil (${res.status})` }));
+                    throw new Error(errorData.error || 'Noe gikk galt.');
+                }
+
+                imdbUrlInput.value = '';
+                await fetchWishes();
+                showSuccess('Ønsket er lagt til!');
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+
+        function fadeElement(element, duration = 300) {
+            element.style.transition = `opacity ${duration}ms ease`;
+            element.style.opacity = '0';
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    element.classList.add('hidden');
+                    element.style.display = '';
+                    element.style.transition = '';
+                    element.style.opacity = '';
+                    resolve();
+                }, duration);
+            });
+        }
+
+        function showError(msg) {
+            if (successTimeoutId) {
+                clearTimeout(successTimeoutId);
+                successTimeoutId = null;
+            }
+            if (errorTimeoutId) {
+                clearTimeout(errorTimeoutId);
+                errorTimeoutId = null;
+            }
+
+            successMessage.classList.add('hidden');
+            errorMessage.textContent = msg;
+            errorMessage.classList.remove('hidden');
+            errorMessage.style.display = 'block';
+            errorMessage.style.opacity = '1';
+            errorMessage.style.transition = 'opacity 0.3s ease';
+
+            errorTimeoutId = setTimeout(() => {
+                fadeElement(errorMessage).then(() => {
+                    errorTimeoutId = null;
+                });
+            }, 4000);
+        }
+
+        function showSuccess(msg) {
+            if (successTimeoutId) {
+                clearTimeout(successTimeoutId);
+                successTimeoutId = null;
+            }
+            if (errorTimeoutId) {
+                clearTimeout(errorTimeoutId);
+                errorTimeoutId = null;
+            }
+
+            errorMessage.classList.add('hidden');
+            successMessage.textContent = msg;
+            successMessage.classList.remove('hidden');
+            successMessage.style.display = 'block';
+            successMessage.style.opacity = '1';
+            successMessage.style.transition = 'opacity 0.3s ease';
+
+            successTimeoutId = setTimeout(() => {
+                fadeElement(successMessage).then(() => {
+                    successTimeoutId = null;
+                });
+            }, 4000);
+        }
+
+
+
+        function clearMessages() {
+            if (successTimeoutId) {
+                clearTimeout(successTimeoutId);
+                successTimeoutId = null;
+            }
+            if (errorTimeoutId) {
+                clearTimeout(errorTimeoutId);
+                errorTimeoutId = null;
+            }
+            errorMessage.classList.add('hidden');
+            successMessage.classList.add('hidden');
+            errorMessage.style.display = 'none';
+            successMessage.style.display = 'none';
+        }
+
+        imdbUrlInput.addEventListener('input', () => {
+            clearMessages();
+        });
+
+        async function fetchComments() {
+            try {
+                const res = await fetch(`${RENDER_API_URL}/comments`);
+                if (!res.ok) throw new Error('Kunne ikke hente kommentarer.');
+                const comments = await res.json();
+                renderComments(comments);
+            } catch (err) {
+                console.error('Feil ved henting av kommentarer:', err);
+            }
+        }
+
+        function renderComments(comments) {
+            commentsContainer.innerHTML = '';
+            if (!comments || comments.length === 0) {
+                commentsContainer.innerHTML = '<p class="text-gray-500 text-center py-4">Ingen kommentarer ennå. Bli den første!</p>';
+                return;
+            }
+
+            comments.forEach(comment => {
+                const div = document.createElement('div');
+                div.className = 'comment-card bg-gray-700/50 p-4 rounded-lg border border-gray-600/40';
+
+                const header = document.createElement('div');
+                header.className = 'flex justify-between items-center mb-2';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'font-bold text-yellow-500 text-sm';
+                nameSpan.textContent = comment.name || 'Anonym';
+
+                const rightContainer = document.createElement('div');
+                rightContainer.className = 'flex items-center gap-3';
+
+                const dateSpan = document.createElement('span');
+                dateSpan.className = 'text-xs text-gray-400';
+                const date = new Date(comment.created_at || comment.createdAt);
+                dateSpan.textContent = date.toLocaleString('no-NO', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                rightContainer.appendChild(dateSpan);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 'text-red-500 hover:text-red-400 text-xs font-semibold transition-colors';
+                deleteBtn.textContent = 'Slett';
+                deleteBtn.addEventListener('click', () => deleteComment(comment.id || '', deleteBtn));
+                rightContainer.appendChild(deleteBtn);
+
+                header.appendChild(nameSpan);
+                header.appendChild(rightContainer);
+
+                const textP = document.createElement('p');
+                textP.className = 'text-gray-200 text-sm whitespace-pre-wrap';
+                textP.textContent = comment.text;
+
+                div.appendChild(header);
+                div.appendChild(textP);
+                commentsContainer.appendChild(div);
+            });
+        }
+
+        commentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = commentName.value.trim();
+            const text = commentInput.value.trim();
+
+            if (!name || !text) return;
+
+            const submitBtn = commentForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50');
+
+            try {
+                const res = await fetch(`${RENDER_API_URL}/comments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, text })
+                });
+
+                if (res.ok) {
+                    commentInput.value = '';
+                    await fetchComments();
+                } else {
+                    console.error('Feil ved lagring av kommentar.');
+                }
+            } catch (err) {
+                console.error('Nettverksfeil ved sending av kommentar:', err);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50');
+            }
+        });
+
+        fetchWishes();
+        fetchComments();
+    </script>
+
+</body>
+
+</html>
